@@ -1,6 +1,8 @@
 name: Deploy to Cloudflare
 
 on:
+  push:
+    branches: [ main ]
   workflow_dispatch:
 
 concurrency:
@@ -160,12 +162,12 @@ jobs:
               # 仅处理包含 = 的行
               case "$line" in
                 *=*) ;;
-                *) echo "⚠️ 跳过非法行（缺少 =）: $line"; continue ;;
+                *) echo "⚠️ 跳过非法行（缺少 =） (value hidden)"; continue ;;
               esac
               # 以第一个 = 分割，无论等号两边有无空格
               key="$(printf '%s' "${line%%=*}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
               value="$(printf '%s' "${line#*=}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
-              if [ -z "$key" ]; then echo "⚠️ 跳过非法行（缺少变量名）: $line"; continue; fi
+              if [ -z "$key" ]; then echo "⚠️ 跳过非法行（缺少变量名） (value hidden)"; continue; fi
               # 去掉用户自带的包裹引号
               value="${value%\"}"; value="${value#\"}"
               # 转义 TOML 基本字符串里的 \ 和 "
@@ -178,8 +180,7 @@ jobs:
             done
           fi
           
-          echo "Updated wrangler.toml:"
-          cat wrangler.toml
+          echo "wrangler.toml configuration updated (values hidden)"
 
       - name: Build for Cloudflare
         run: pnpm run build:cloudflare

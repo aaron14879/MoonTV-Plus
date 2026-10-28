@@ -1,0 +1,66 @@
+name: Fork upstream sync
+on:
+  schedule:
+    - cron: '23 22 * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+  pull-requests: write
+concurrency:
+  group: fork-upstream-sync
+  cancel-in-progress: false
+jobs:
+  sync:
+    if: github.repository == 'aaron14879/MoonTV-Plus'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Prepare upstream merge without running upstream code
+        id: merge
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/mtvpls/MoonTVPlus.git
+          git fetch upstream main
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Only .github conflicts may be resolved automatically.
+          if ! git merge --no-ff --no-commit upstream/main; then
+            conflicts="$(git diff --name-only --diff-filter=U)"
+            if [ -z "$conflicts" ] || printf '%s\n' "$conflicts" | grep -qv '^.github/'; then
+              git merge --abort
+              echo "::error::Upstream conflicts outside .github; manual review required. No branch was overwritten."
+              exit 1
+            fi
+          fi
+          # Keep the complete fork-owned automation directory, including deletions
+          # of newly introduced upstream workflows. Never execute imported code here.
+          git restore --source=HEAD --staged --worktree -- .github
+          if [ -n "$(git diff --name-only --diff-filter=U)" ]; then
+            git merge --abort
+            exit 1
+          fi
+          git diff --cached --exit-code -- .github
+          git commit -m "Merge upstream main while preserving fork automation"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+      - name: Open or update one reviewable sync PR
+        if: steps.merge.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: fork/upstream-sync
+          base: main
+          title: "Sync upstream MoonTV-Plus (preserve fork workflows)"
+          body: |
+            Merge upstream main while retaining the fork's entire .github directory.
+            Review application, dependency, Docker and build changes before merging.
+            No upstream code is executed by the sync job. Conflicts outside .github stop the job.
+            Merge this PR normally to trigger Full, Lite and Cloudflare on main.
+            Do not use GitHub Sync fork / Discard commits, which can remove fork customizations.
+          delete-branch: true
